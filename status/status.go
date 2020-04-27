@@ -86,7 +86,7 @@ func NewServer(args []string) *Server {
 	fs.StringVar(&certFile, "cert", "/etc/letsencrypt/live/sne.seankhliao.com/fullchain.pem", "fullchain certificate file")
 	fs.StringVar(&keyFile, "key", "/etc/letsencrypt/live/sne.seankhliao.com/privkey.pem", "private key file")
 	fs.StringVar(&endpoint, "endpoint", "http://145.100.104.117:8910", "rebuilderd api endpoint")
-	fs.StringVar(&gaid, "gaid", "UA-114337586-1", "google analytics id")
+	fs.StringVar(&gaid, "gaid", "UA-114337586-6", "google analytics id")
 	c := usvc.NewConfig(fs)
 	fs.Parse(args[1:])
 
