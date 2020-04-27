@@ -7,6 +7,10 @@ A repo for rebuilderd-go
 [![pkg.go.dev](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](https://pkg.go.dev/go.seankhliao.com/rebuilderd-go)
 
 ```go
-import "go.seankhliao.com/rebuilderd-go"
+import rebuilderd "go.seankhliao.com/rebuilderd-go"
 ```
 
+WIP go client for [rebuilderd](https://github.com/kpcyrd/rebuilderd) API
+
+currently only the 2 GET requests are implemented,
+others are commented out and untested
