@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/NYTimes/gziphandler"
 	"go.seankhliao.com/rebuilderd-go"
 	"go.seankhliao.com/usvc"
 	"go.seankhliao.com/webstyle"
@@ -63,6 +64,12 @@ page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
 %d <span class="BAD">bad</span> /
 %d <span class="UNKWN">unknown</span></p>
 
+<p><em><a href="#extra">Extra</a></em>:
+%d%% reproducible with
+%d <span class="GOOD">good</span> /
+%d <span class="BAD">bad</span> /
+%d <span class="UNKWN">unknown</span></p>
+
 <p><em><a href="#community">Community</a></em>:
 %d%% reproducible with
 %d <span class="GOOD">good</span> /
@@ -112,7 +119,7 @@ func NewServer(args []string) *Server {
 		},
 		Svc: svc,
 	}
-	s.Svc.Mux.Handle("/", s)
+	s.Svc.Mux.Handle("/", gziphandler.GzipHandler(s))
 	return s
 }
 
@@ -133,9 +140,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		page[k] = v
 	}
 
-	var core, comm strings.Builder
-	var coret, coreg, coreb, coreu, commt, commg, commb, commu int
+	var core, extra, comm strings.Builder
+	var coret, coreg, coreb, coreu, extrat, extrag, extrab, extrau, commt, commg, commb, commu int
 	core.WriteString(thead)
+	extra.WriteString(thead)
 	comm.WriteString(thead)
 
 	for _, p := range pkgs {
@@ -152,6 +160,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case "UNKWN":
 				coreu++
 			}
+		case "extra":
+			extra.WriteString(s)
+			extrat++
+			switch p.Status {
+			case "GOOD":
+				extrag++
+			case "BAD":
+				extrab++
+			case "UNKWN":
+				extrau++
+			}
 		case "community":
 			comm.WriteString(s)
 			commt++
@@ -167,11 +186,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	core.WriteString(ttail)
+	extra.WriteString(ttail)
 	comm.WriteString(ttail)
 
 	var main strings.Builder
-	main.WriteString(fmt.Sprintf(header, (100 * coreg / coret), coreg, coreb, coreu, (100 * commg / commt), commg, commb, commu))
+	main.WriteString(fmt.Sprintf(header,
+		(100 * coreg / coret), coreg, coreb, coreu,
+		(100 * extrag / extrat), extrag, extrab, extrau,
+		(100 * commg / commt), commg, commb, commu))
 	main.WriteString(core.String())
+	main.WriteString(`<h4 id="extra"><em>Extra</em></h4>`)
+	main.WriteString(extra.String())
 	main.WriteString(`<h4 id="community"><em>Community</em></h4>`)
 	main.WriteString(comm.String())
 	page["Main"] = main.String()
