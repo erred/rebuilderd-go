@@ -52,7 +52,8 @@ main{margin-top: 0;}
 <p>
 <a href="https://github.com/kpcyrd/rebuilderd">rebuilderd</a>
 run by
-<em><a href="https://seankhliao.com">seankhliao</a></em>
+<em><a href="https://seankhliao.com">seankhliao</a></em>,
+page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
 </p>
 
 <p><em><a href="#core">Core</a></em>:
@@ -115,6 +116,7 @@ func NewServer(args []string) *Server {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "max-age=300")
 	pkgs, err := s.rc.PkgsList(nil)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
