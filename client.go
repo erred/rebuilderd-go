@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 )
 
@@ -159,10 +158,6 @@ func (c *Client) doJSON(req *http.Request, out interface{}) error {
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		return fmt.Errorf(res.Status)
-	}
-	r, err := httputil.DumpResponse(res, true)
-	if err == nil {
-		fmt.Println(string(r))
 	}
 
 	err = json.NewDecoder(res.Body).Decode(out)
