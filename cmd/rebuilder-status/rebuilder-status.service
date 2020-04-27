@@ -1,0 +1,13 @@
+[Unit]
+Description=Rebuilderd status server
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+ExecStart=/usr/local/bin/rebuilder-status -http.port=443
+
+[Install]
+WantedBy=multi-user.target

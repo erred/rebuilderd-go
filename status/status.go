@@ -49,7 +49,11 @@ main{margin-top: 0;}
 
 	header = `
 <h3><em>Archlinux</em> Reproducible Builds</h3>
-<p>Run by <em>seankhliao</em></p>
+<p>
+<a href="https://github.com/kpcyrd/rebuilderd">rebuilderd</a>
+run by
+<em><a href="https://seankhliao.com">seankhliao</a></em>
+</p>
 
 <p><em><a href="#core">Core</a></em>:
 %d%% reproducible with
@@ -80,8 +84,8 @@ func NewServer(args []string) *Server {
 	fs.StringVar(&certFile, "cert", "/etc/letsencrypt/live/sne.seankhliao.com/fullchain.pem", "fullchain certificate file")
 	fs.StringVar(&keyFile, "key", "/etc/letsencrypt/live/sne.seankhliao.com/privkey.pem", "private key file")
 	fs.StringVar(&endpoint, "endpoint", "http://145.100.104.117:8910", "rebuilderd api endpoint")
-	c := usvc.NewConfig(fs)
 	fs.StringVar(&gaid, "gaid", "UA-114337586-1", "google analytics id")
+	c := usvc.NewConfig(fs)
 	fs.Parse(args[1:])
 
 	svc, err := usvc.NewServerSecure(c, certFile, keyFile)
