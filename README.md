@@ -14,3 +14,5 @@ WIP go client for [rebuilderd](https://github.com/kpcyrd/rebuilderd) API
 
 currently only the 2 GET requests are implemented,
 others are commented out and untested
+
+status server in status/

@@ -16,7 +16,34 @@ import (
 )
 
 const (
-	thead = `<table>
+	style = `
+header{display: none;}
+main{margin-top: 0;}
+td {font-weight:700}
+.BAD{color: #bf616a;}
+.GOOD{color: #a3be8c;}
+.UNKWN{color: #999;}
+`
+
+	header = `
+<h3><em>Arch Linux</em> Reproducible Builds</h3>
+<p>
+<a href="https://github.com/kpcyrd/rebuilderd">rebuilderd</a>
+run by
+<em><a href="https://seankhliao.com">seankhliao</a></em>,
+page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
+</p>`
+
+	shortlog = `
+<p><em><a href="#%s">%s</a></em>:
+%d%% reproducible with
+%d <span class="GOOD">good</span> /
+%d <span class="BAD">bad</span> /
+%d <span class="UNKWN">unknown</span></p>
+`
+
+	subsection = `<h4 id="%s"><em>%s</em></h4>
+<table>
 <thead>
 <tr>
 <th>Status</th>
@@ -30,7 +57,7 @@ const (
 
 	trow = `
 <tr class="%s">
-<td>%s</td>
+<td><strong>%s</strong></td>
 <td>%s</td>
 <td>%s</td>
 <td>%s</td>
@@ -40,43 +67,6 @@ const (
 	ttail = `
 </tbody>
 </table>`
-
-	style = `
-header{display: none;}
-main{margin-top: 0;}
-.BAD{color: #BF616A;}
-.GOOD{color: #A3BE8C;}
-.UNKWN{color: #999;}
-`
-
-	header = `
-<h3><em>Archlinux</em> Reproducible Builds</h3>
-<p>
-<a href="https://github.com/kpcyrd/rebuilderd">rebuilderd</a>
-run by
-<em><a href="https://seankhliao.com">seankhliao</a></em>,
-page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
-</p>
-
-<p><em><a href="#core">Core</a></em>:
-%d%% reproducible with
-%d <span class="GOOD">good</span> /
-%d <span class="BAD">bad</span> /
-%d <span class="UNKWN">unknown</span></p>
-
-<p><em><a href="#extra">Extra</a></em>:
-%d%% reproducible with
-%d <span class="GOOD">good</span> /
-%d <span class="BAD">bad</span> /
-%d <span class="UNKWN">unknown</span></p>
-
-<p><em><a href="#community">Community</a></em>:
-%d%% reproducible with
-%d <span class="GOOD">good</span> /
-%d <span class="BAD">bad</span> /
-%d <span class="UNKWN">unknown</span></p>
-
-<h4 id="core"><em>Core</em></h4>`
 )
 
 type Server struct {
@@ -92,7 +82,7 @@ func NewServer(args []string) *Server {
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	fs.StringVar(&certFile, "cert", "/etc/letsencrypt/live/sne.seankhliao.com/fullchain.pem", "fullchain certificate file")
 	fs.StringVar(&keyFile, "key", "/etc/letsencrypt/live/sne.seankhliao.com/privkey.pem", "private key file")
-	fs.StringVar(&endpoint, "endpoint", "http://145.100.104.117:8910", "rebuilderd api endpoint")
+	fs.StringVar(&endpoint, "endpoint", "http://145.100.104.117:8484", "rebuilderd api endpoint")
 	fs.StringVar(&gaid, "gaid", "UA-114337586-6", "google analytics id")
 	c := usvc.NewConfig(fs)
 	fs.Parse(args[1:])
@@ -119,6 +109,7 @@ func NewServer(args []string) *Server {
 		},
 		Svc: svc,
 	}
+	s.Svc.Mux.HandleFunc("/favicon.ico", favicon)
 	s.Svc.Mux.Handle("/", gziphandler.GzipHandler(s))
 	return s
 }
@@ -130,76 +121,77 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	sort.Slice(pkgs, func(i, j int) bool {
-		return pkgs[i].Name < pkgs[j].Name
-	})
-
 	page := make(map[string]string, len(s.page))
 	for k, v := range s.page {
 		page[k] = v
 	}
+	page["Main"] = pkgs2page(pkgs)
+	s.t.ExecuteTemplate(w, "LayoutGohtml", page)
+}
 
-	var core, extra, comm strings.Builder
-	var coret, coreg, coreb, coreu, extrat, extrag, extrab, extrau, commt, commg, commb, commu int
-	core.WriteString(thead)
-	extra.WriteString(thead)
-	comm.WriteString(thead)
+func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
+	sort.Slice(pkgs, func(i, j int) bool {
+		return pkgs[i].Name < pkgs[j].Name
+	})
+
+	reponames := []string{"Core", "Extra", "Community"}
+	repos := make([]Repo, len(reponames))
 
 	for _, p := range pkgs {
-		s := fmt.Sprintf(trow, p.Status, p.Status, p.Name, p.Architecture, p.Version, p.URL)
+		s := fmt.Sprintf(trow, p.Status, p.Status, p.Name, p.Version, p.Architecture, p.URL)
+		var i = -1
 		switch p.Suite {
 		case "core":
-			core.WriteString(s)
-			coret++
-			switch p.Status {
-			case "GOOD":
-				coreg++
-			case "BAD":
-				coreb++
-			case "UNKWN":
-				coreu++
-			}
+			i = 0
 		case "extra":
-			extra.WriteString(s)
-			extrat++
-			switch p.Status {
-			case "GOOD":
-				extrag++
-			case "BAD":
-				extrab++
-			case "UNKWN":
-				extrau++
-			}
+			i = 1
 		case "community":
-			comm.WriteString(s)
-			commt++
-			switch p.Status {
-			case "GOOD":
-				commg++
-			case "BAD":
-				commb++
-			case "UNKWN":
-				commu++
-			}
+			i = 2
+		default:
+			continue
+		}
+		repos[i].b.WriteString(s)
+		switch p.Status {
+		case "GOOD":
+			repos[i].good++
+		case "BAD":
+			repos[i].bad++
+		case "UNKWN":
+			repos[i].unknown++
 		}
 	}
 
-	core.WriteString(ttail)
-	extra.WriteString(ttail)
-	comm.WriteString(ttail)
-
 	var main strings.Builder
-	main.WriteString(fmt.Sprintf(header,
-		(100 * coreg / coret), coreg, coreb, coreu,
-		(100 * extrag / extrat), extrag, extrab, extrau,
-		(100 * commg / commt), commg, commb, commu))
-	main.WriteString(core.String())
-	main.WriteString(`<h4 id="extra"><em>Extra</em></h4>`)
-	main.WriteString(extra.String())
-	main.WriteString(`<h4 id="community"><em>Community</em></h4>`)
-	main.WriteString(comm.String())
-	page["Main"] = main.String()
+	main.WriteString(header)
+	for i, n := range reponames {
+		if repos[i].empty() {
+			continue
+		}
+		main.WriteString(fmt.Sprintf(shortlog, n, n, repos[i].perc(), repos[i].good, repos[i].bad, repos[i].unknown))
+	}
+	for i, n := range reponames {
+		if repos[i].empty() {
+			continue
+		}
+		repos[i].b.WriteString(ttail)
+		main.WriteString(fmt.Sprintf(subsection, n, n))
+		main.WriteString(repos[i].b.String())
+	}
+	return main.String()
+}
 
-	s.t.ExecuteTemplate(w, "LayoutGohtml", page)
+type Repo struct {
+	b                  strings.Builder
+	good, bad, unknown int
+}
+
+func (r Repo) empty() bool {
+	return r.good+r.bad+r.unknown == 0
+}
+
+func (r Repo) perc() int {
+	if r.empty() {
+		return 0
+	}
+	return 100 * r.good / (r.good + r.bad + r.unknown)
 }
