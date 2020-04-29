@@ -54,7 +54,6 @@ page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
 <th>Package</th>
 <th>Version</th>
 <th>Architecture</th>
-<th>url</th>
 </tr>
 </thead>
 </tbody>`
@@ -65,7 +64,6 @@ page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
 <td>%s</td>
 <td>%s</td>
 <td>%s</td>
-<td><a href="%s">link</a></td>
 </tr>
 `
 	ttail = `
@@ -145,103 +143,114 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.t.ExecuteTemplate(w, "LayoutGohtml", page)
 }
 
-func pkgs2page(pkgs []rebuilderd.PkgRelease, queue []rebuilderd.QueueItem) string {
-	m := make(map[pkgver]rebuilderd.PkgRelease, len(pkgs)+len(queue))
-	for _, p := range pkgs {
-		m[newPkgver(p)] = p
+func pkgs2page(packages []rebuilderd.PkgRelease, queue []rebuilderd.QueueItem) string {
+	reponames := []string{"core", "extra", "community"}
+	repos := make(map[string]*Repo, len(reponames))
+	for _, n := range reponames {
+		repos[n] = &Repo{
+			pkgs: make(map[pkg]status),
+			s:    make(map[string]int),
+		}
+	}
+	for _, p := range packages {
+
+		repos[p.Suite].pkgs[newPkg(p)] = status{status: p.Status, arch: p.Architecture}
+		repos[p.Suite].s[p.Status]++
 	}
 	for _, qi := range queue {
-		qi.Package.Status = "QUEUED"
-		m[newPkgver(qi.Package)] = qi.Package
+		p := qi.Package
+		p.Status = "QUEUED"
+		if stat, ok := repos[p.Suite].pkgs[newPkg(p)]; ok {
+			if stat.status == "UNKWN" {
+				stat.status = p.Status
+				repos[p.Suite].s["UNKWN"]--
+			} else {
+				stat.queued = true
+			}
+			repos[p.Suite].pkgs[newPkg(p)] = stat
+		} else {
+			repos[p.Suite].pkgs[newPkg(p)] = status{status: p.Status, arch: p.Architecture}
+		}
+		repos[p.Suite].s[p.Status]++
 	}
-
-	packages := make([]rebuilderd.PkgRelease, len(m))
-	for _, v := range m {
-		packages = append(packages, v)
-	}
-	sort.Slice(packages, func(i, j int) bool {
-		return packages[i].Name < packages[j].Name
-	})
-
-	reponames := []string{"Core", "Extra", "Community"}
-	repos := make([]Repo, len(reponames))
-
-	for _, p := range packages {
-		s := fmt.Sprintf(trow, p.Status, p.Status, p.Name, p.Version, p.Architecture, p.URL)
-		var i = -1
-		switch p.Suite {
-		case "core":
-			i = 0
-		case "extra":
-			i = 1
-		case "community":
-			i = 2
-		default:
+	for _, n := range reponames {
+		repo := repos[n]
+		if len(repo.pkgs) == 0 {
 			continue
 		}
-		repos[i].b.WriteString(s)
-		repos[i].total++
-		switch p.Status {
-		case "GOOD":
-			repos[i].good++
-		case "BAD":
-			repos[i].bad++
-		case "UNKWN":
-			repos[i].unknown++
-		case "QUEUED":
-			repos[i].queued++
+
+		repo.sum = fmt.Sprintf(shortlog, n, n, repo.perc(), repo.s["GOOD"], repo.s["BAD"], repo.s["QUEUED"], repo.s["UNKWN"])
+
+		pkgs := make([]pkg, 0, len(repo.pkgs))
+		for k := range repo.pkgs {
+			pkgs = append(pkgs, k)
 		}
+		sort.Slice(pkgs, func(i, j int) bool {
+			if pkgs[i].name == pkgs[j].name {
+				return pkgs[i].vers < pkgs[j].vers
+			}
+			return pkgs[i].name < pkgs[j].name
+		})
+		buf := strings.Builder{}
+		buf.WriteString(fmt.Sprintf(subsection, n, n))
+		for _, k := range pkgs {
+			p := repo.pkgs[k]
+			buf.WriteString(fmt.Sprintf(trow, p.status, p.status, k.name, k.vers, p.arch))
+			if p.queued {
+				buf.WriteString(fmt.Sprintf(trow, "QUEUED", "QUEUED", k.name, k.vers, p.arch))
+			}
+		}
+		buf.WriteString(ttail)
+		repo.tab = buf.String()
 	}
 
 	var main strings.Builder
 	main.WriteString(header)
-	for i, n := range reponames {
-		if repos[i].empty() {
+	for _, n := range reponames {
+		if len(repos[n].pkgs) == 0 {
 			continue
 		}
-		main.WriteString(fmt.Sprintf(shortlog, n, n, repos[i].perc(), repos[i].good, repos[i].bad, repos[i].queued, repos[i].unknown))
+		main.WriteString(repos[n].sum)
 	}
-	for i, n := range reponames {
-		if repos[i].empty() {
+	for _, n := range reponames {
+		if len(repos[n].pkgs) == 0 {
 			continue
 		}
-		repos[i].b.WriteString(ttail)
-		main.WriteString(fmt.Sprintf(subsection, n, n))
-		main.WriteString(repos[i].b.String())
+		main.WriteString(repos[n].tab)
 	}
 	return main.String()
 }
 
-type pkgver struct {
-	distro string
-	suite  string
-	name   string
+type pkg struct {
+	name string
+	vers string
 }
 
-func newPkgver(p rebuilderd.PkgRelease) pkgver {
-	return pkgver{
-		distro: p.Distro,
-		suite:  p.Suite,
-		name:   p.Name,
+func newPkg(p rebuilderd.PkgRelease) pkg {
+	return pkg{
+		name: p.Name,
+		vers: p.Version,
 	}
+}
+
+type status struct {
+	arch   string
+	status string
+	queued bool
 }
 
 type Repo struct {
-	b       strings.Builder
-	total   int
-	good    int
-	bad     int
-	unknown int
-	queued  int
-}
-
-func (r Repo) empty() bool {
-	return r.total == 0
+	b    strings.Builder
+	pkgs map[pkg]status
+	s    map[string]int
+	sum  string
+	tab  string
 }
 
 func (r Repo) perc() int {
-	if r.empty() {
-		return 0
+	m := make(map[string]struct{})
+	for k := range r.pkgs {
+		m[k.name] = struct{}{}
 	}
-	return 100 * r.good / (r.total)
+	return 100 * r.s["GOOD"] / len(m)
 }
