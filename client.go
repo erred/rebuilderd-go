@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 )
@@ -91,11 +92,12 @@ func (c *Client) PkgsList(list *ListPkgs) ([]PkgRelease, error) {
 	return pkgs, err
 }
 
-// func (c *Client) QueueList(list *ListQueue) ([]QueueList, error) {
-// 	var ql []QueueList
-// 	err := c.postJSON("/api/v0/queue/list", list, &ql)
-// 	return ql, err
-// }
+func (c *Client) QueueList(list ListQueue) (QueueList, error) {
+	var ql QueueList
+	err := c.postJSON("/api/v0/queue/list", list, &ql)
+	return ql, err
+}
+
 //
 // func (c *Client) QueuePush(push *PushQueue) error {
 // 	err := c.postJSON("/api/v0/queue/push", push, nil)
@@ -128,6 +130,7 @@ func (c *Client) postJSON(path string, in, out interface{}) error {
 		if err != nil {
 			return err
 		}
+		// b := []byte(`{"limit":null}`)
 		r = bytes.NewReader(b)
 	}
 	u := c.url
@@ -136,6 +139,7 @@ func (c *Client) postJSON(path string, in, out interface{}) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("content-type", "application/json")
 	return c.doJSON(req, out)
 }
 
@@ -157,7 +161,8 @@ func (c *Client) doJSON(req *http.Request, out interface{}) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return fmt.Errorf(res.Status)
+		b, _ := ioutil.ReadAll(res.Body)
+		return fmt.Errorf("%s: %s", res.Status, b)
 	}
 
 	err = json.NewDecoder(res.Body).Decode(out)

@@ -1,8 +1,10 @@
 package status
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"sort"
@@ -23,6 +25,7 @@ td {font-weight:700}
 .BAD{color: #bf616a;}
 .GOOD{color: #a3be8c;}
 .UNKWN{color: #999;}
+.QUEUED{color: #ebcb8b;}
 `
 
 	header = `
@@ -39,6 +42,7 @@ page source: <a href="https://github.com/seankhliao/rebuilderd-go">github</a>
 %d%% reproducible with
 %d <span class="GOOD">good</span> /
 %d <span class="BAD">bad</span> /
+%d <span class="QUEUED">queued</span> /
 %d <span class="UNKWN">unknown</span></p>
 `
 
@@ -78,12 +82,13 @@ type Server struct {
 }
 
 func NewServer(args []string) *Server {
-	var certFile, keyFile, endpoint, gaid string
+	var certFile, keyFile, endpoint, gaid, acf string
 	fs := flag.NewFlagSet(args[0], flag.ExitOnError)
 	fs.StringVar(&certFile, "cert", "/etc/letsencrypt/live/sne.seankhliao.com/fullchain.pem", "fullchain certificate file")
 	fs.StringVar(&keyFile, "key", "/etc/letsencrypt/live/sne.seankhliao.com/privkey.pem", "private key file")
 	fs.StringVar(&endpoint, "endpoint", "http://145.100.104.117:8484", "rebuilderd api endpoint")
 	fs.StringVar(&gaid, "gaid", "UA-114337586-6", "google analytics id")
+	fs.StringVar(&acf, "authcookiefile", "/var/lib/rebuilderd/auth-cookie", "file containing auth cookie")
 	c := usvc.NewConfig(fs)
 	fs.Parse(args[1:])
 
@@ -95,6 +100,12 @@ func NewServer(args []string) *Server {
 	if err != nil {
 		svc.Log.Fatal().Err(err).Msg("rebuilderd client")
 	}
+
+	b, err := ioutil.ReadFile(acf)
+	if err != nil {
+		svc.Log.Error().Str("file", acf).Err(err).Msg("read auth cookie file")
+	}
+	rc.AuthCookie = string(bytes.TrimSpace(b))
 
 	s := &Server{
 		rc: rc,
@@ -121,23 +132,41 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	queue, err := s.rc.QueueList(rebuilderd.ListQueue{})
+	if err != nil {
+		s.Svc.Log.Error().Err(err).Msg("get queue")
+	}
+
 	page := make(map[string]string, len(s.page))
 	for k, v := range s.page {
 		page[k] = v
 	}
-	page["Main"] = pkgs2page(pkgs)
+	page["Main"] = pkgs2page(pkgs, queue.Queue)
 	s.t.ExecuteTemplate(w, "LayoutGohtml", page)
 }
 
-func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
-	sort.Slice(pkgs, func(i, j int) bool {
-		return pkgs[i].Name < pkgs[j].Name
+func pkgs2page(pkgs []rebuilderd.PkgRelease, queue []rebuilderd.QueueItem) string {
+	m := make(map[pkgver]rebuilderd.PkgRelease, len(pkgs)+len(queue))
+	for _, p := range pkgs {
+		m[newPkgver(p)] = p
+	}
+	for _, qi := range queue {
+		qi.Package.Status = "QUEUED"
+		m[newPkgver(qi.Package)] = qi.Package
+	}
+
+	packages := make([]rebuilderd.PkgRelease, len(m))
+	for _, v := range m {
+		packages = append(packages, v)
+	}
+	sort.Slice(packages, func(i, j int) bool {
+		return packages[i].Name < packages[j].Name
 	})
 
 	reponames := []string{"Core", "Extra", "Community"}
 	repos := make([]Repo, len(reponames))
 
-	for _, p := range pkgs {
+	for _, p := range packages {
 		s := fmt.Sprintf(trow, p.Status, p.Status, p.Name, p.Version, p.Architecture, p.URL)
 		var i = -1
 		switch p.Suite {
@@ -151,6 +180,7 @@ func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
 			continue
 		}
 		repos[i].b.WriteString(s)
+		repos[i].total++
 		switch p.Status {
 		case "GOOD":
 			repos[i].good++
@@ -158,6 +188,8 @@ func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
 			repos[i].bad++
 		case "UNKWN":
 			repos[i].unknown++
+		case "QUEUED":
+			repos[i].queued++
 		}
 	}
 
@@ -167,7 +199,7 @@ func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
 		if repos[i].empty() {
 			continue
 		}
-		main.WriteString(fmt.Sprintf(shortlog, n, n, repos[i].perc(), repos[i].good, repos[i].bad, repos[i].unknown))
+		main.WriteString(fmt.Sprintf(shortlog, n, n, repos[i].perc(), repos[i].good, repos[i].bad, repos[i].queued, repos[i].unknown))
 	}
 	for i, n := range reponames {
 		if repos[i].empty() {
@@ -180,18 +212,36 @@ func pkgs2page(pkgs []rebuilderd.PkgRelease) string {
 	return main.String()
 }
 
+type pkgver struct {
+	distro string
+	suite  string
+	name   string
+}
+
+func newPkgver(p rebuilderd.PkgRelease) pkgver {
+	return pkgver{
+		distro: p.Distro,
+		suite:  p.Suite,
+		name:   p.Name,
+	}
+}
+
 type Repo struct {
-	b                  strings.Builder
-	good, bad, unknown int
+	b       strings.Builder
+	total   int
+	good    int
+	bad     int
+	unknown int
+	queued  int
 }
 
 func (r Repo) empty() bool {
-	return r.good+r.bad+r.unknown == 0
+	return r.total == 0
 }
 
 func (r Repo) perc() int {
 	if r.empty() {
 		return 0
 	}
-	return 100 * r.good / (r.good + r.bad + r.unknown)
+	return 100 * r.good / (r.total)
 }

@@ -68,10 +68,10 @@ func (l *ListPkgs) Values() url.Values {
 	return v
 }
 
-// // https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/api.rs#L235
-// type ListQueue struct {
-// 	Limit *int64 `json:"limit"`
-// }
+// https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/api.rs#L235
+type ListQueue struct {
+	Limit *int64 `json:"limit"`
+}
 
 // https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/lib.rs#L23
 type PkgRelease struct {
@@ -95,21 +95,23 @@ type PkgRelease struct {
 // }
 //
 // // https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/api.rs#L218
-// type QueueList struct {
-// 	Now   string      `json:"now"`
-// 	Queue []QueueItem `json:"queue"`
-// }
+type QueueList struct {
+	Now   string      `json:"now"`
+	Queue []QueueItem `json:"queue"`
+}
+
 //
 // // https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/api.rs#L224
-// type QueueItem struct {
-// 	ID        int32      `json"id"`
-// 	Package   PkgRelease `json:"package"`
-// 	Version   string     `json"version"`
-// 	QueuedAt  string     `json:"queued_at"`
-// 	WorkerID  *int32     `json:"worker_id"`
-// 	StartedAt *string    `json:"started_at"`
-// 	LastPing  *string    `json:"last_ping"`
-// }
+type QueueItem struct {
+	ID        int32      `json"id"`
+	Package   PkgRelease `json:"package"`
+	Version   string     `json"version"`
+	QueuedAt  string     `json:"queued_at"`
+	WorkerID  *int32     `json:"worker_id"`
+	StartedAt *string    `json:"started_at"`
+	LastPing  *string    `json:"last_ping"`
+}
+
 //
 // // https://github.com/kpcyrd/rebuilderd/blob/6bf8e2219c87fe053af9daf6223666342108bc44/common/src/api.rs#L201
 // type SuiteImport struct {
